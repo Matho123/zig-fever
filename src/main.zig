@@ -4,7 +4,7 @@ const math = std.math;
 
 const WINDOW_HEIGHT: f32 = 1000;
 const WINDOW_WIDTH: f32 = 1000;
-const WINDOW_BG_COLOR = rl.Color{ .r = 20, .g = 20, .b = 20, .a = 255 };
+const WINDOW_BG_COLOR = rl.Color{ .r = 100, .g = 20, .b = 20, .a = 255 };
 const ARENA_SIZE: f32 = 800;
 
 const TARGET_FPS: f32 = 60;
@@ -20,18 +20,21 @@ pub fn main() !void {
 
     rl.setTargetFPS(TARGET_FPS);
 
-    var players = [_]Player{ Player.init(.{ .x = 100, .y = 100 }, 68, 70), Player.init(.{ .x = 50, .y = 300 }, 74, 75) };
+    var players = [_]Player{ Player.init(.{ .x = 100, .y = 100 }, 68, 70, .red), Player.init(.{ .x = 50, .y = 300 }, 74, 75, .blue) };
 
+
+    rl.drawRectangleRec(rl.Rectangle{ .x = 0, .y = 0, .width = WINDOW_WIDTH, .height = WINDOW_HEIGHT }, WINDOW_BG_COLOR);
     while (!rl.windowShouldClose()) {
         rl.beginDrawing();
         defer rl.endDrawing();
 
-        rl.clearBackground(WINDOW_BG_COLOR);
+        // rl.clearBackground(WINDOW_BG_COLOR);
 
         ARENA.render();
         for (0..players.len) |i| {
             players[i].update();
-            players[i].render();
+            //players[i].renderPoint();
+            players[i].renderPath();
         }
     }
 }
@@ -58,14 +61,16 @@ const Player = struct {
     dirAngle: f32 = 0,
     dirAngleMult: f32 = 1,
     dirCoords: rl.Vector2 = .{ .x = 0, .y = 0 },
-    position: rl.Vector2 = .{ .x = 400, .y = 300 },
+    currPosition: rl.Vector2 = .{ .x = 400, .y = 300 },
+    prevPosition: rl.Vector2 = .{ .x = 400, .y = 300 },
     leftKey: rl.KeyboardKey,
     rightKey: rl.KeyboardKey,
+    color: rl.Color = .blue,
 
-    pub fn init(position: rl.Vector2, leftKeyASCII: c_int, rightKeyASCII: c_int) Player {
+    pub fn init(position: rl.Vector2, leftKeyASCII: c_int, rightKeyASCII: c_int, color: rl.Color) Player {
         const leftKey: rl.KeyboardKey = @enumFromInt(leftKeyASCII);
         const rightKey: rl.KeyboardKey = @enumFromInt(rightKeyASCII);
-        return Player{ .position = position, .leftKey = leftKey, .rightKey = rightKey };
+        return Player{ .currPosition = position, .prevPosition = position, .leftKey = leftKey, .rightKey = rightKey, .color = color };
     }
 
     pub fn update(self: *Player) void {
@@ -76,16 +81,20 @@ const Player = struct {
         self.checkArenaCollision();
     }
 
-    pub fn render(self: *Player) void {
+    pub fn renderPath(self: *Player) void {
+        rl.drawLineEx(self.prevPosition, self.currPosition, 2.0 * (self.thickness - 1), self.color);
+    }
+
+    pub fn renderPoint(self: *Player) void {
         const scaledRadius = SCALED_UNIT * self.thickness;
-        rl.drawCircle(@intFromFloat(self.position.x), @intFromFloat(self.position.y), scaledRadius, .white);
+        rl.drawCircle(@intFromFloat(self.currPosition.x), @intFromFloat(self.currPosition.y), scaledRadius, self.color);
     }
 
     fn checkArenaCollision(self: *Player) void {
-        const playerLeft = self.position.x - self.thickness;
-        const playerRight = self.position.x + self.thickness;
-        const playerTop = self.position.y - self.thickness;
-        const playerBottom = self.position.y + self.thickness;
+        const playerLeft = self.currPosition.x - self.thickness;
+        const playerRight = self.currPosition.x + self.thickness;
+        const playerTop = self.currPosition.y - self.thickness;
+        const playerBottom = self.currPosition.y + self.thickness;
         const arenaPos = ARENA.position;
         if (playerLeft < arenaPos.x or playerRight > arenaPos.x + ARENA.width) {
             self.alive = false;
@@ -106,8 +115,18 @@ const Player = struct {
         const nDirCoordsY = FIXED_SPEED * SCALED_UNIT * self.thickness * math.sin(self.dirAngle) * self.speedMult;
         self.dirCoords = .{ .x = nDirCoordsX, .y = nDirCoordsY };
 
-        const nPosX = self.position.x + self.dirCoords.x;
-        const nPosY = self.position.y + self.dirCoords.y;
-        self.position = .{ .x = nPosX, .y = nPosY };
+        const nPosX = self.currPosition.x + self.dirCoords.x;
+        const nPosY = self.currPosition.y + self.dirCoords.y;
+        self.prevPosition = self.currPosition;
+        self.currPosition = .{ .x = nPosX, .y = nPosY };
+
+        const image = rl.loadImageFromScreen() catch return;
+        defer image.unload();
+        const bgColor = image.getColor(@intFromFloat(nPosX), @intFromFloat(nPosY));
+        std.debug.print("{} {} {} \n", .{ bgColor.r, bgColor.g, bgColor.b });
+        const isBlack = bgColor.r == 0 and bgColor.g == 0 and bgColor.b == 0; 
+        if (!isBlack) {
+            self.alive = false;
+        }
     }
 };
